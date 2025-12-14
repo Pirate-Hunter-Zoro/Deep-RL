@@ -124,3 +124,54 @@ class ThompsonSampling:
             
         # Return history and cumulative rewards
         return (history, cumulative_rewards)
+    
+
+class UCB:
+    
+    def __init__(self, c: float=np.sqrt(2)):
+        """Initialization for upper confidence bound agent
+
+        Args:
+            c (float, optional): Exploration parameter. Defaults to np.sqrt(2).
+        """
+        self.c = c
+        
+    def run(self, bandit: Bandit_Sim, horizon: int) -> Tuple[np.array, np.array]:
+        """Method to run the upper confidence bound algorithm with the given simulator and the number of horizon
+
+        Args:
+            bandit (Bandit_Sim): Bandit simulator
+            horizon (int): Number of steps
+
+        Returns:
+            Tuple[np.array, np.array]: History and cumulative rewards
+        """
+        n_arms = bandit.n_arms
+        counts = np.zeros(shape=(n_arms,), dtype=np.int32)
+        values = np.zeros(shape=(n_arms,), dtype=np.float32)
+        history = np.zeros(shape=(horizon, n_arms))
+        cumulative_rewards = np.zeros(shape=(horizon,), dtype=np.float32)
+        total_reward = 0.0
+        
+        for t in range(horizon):
+            # We must pull each arm exactly once
+            if t < n_arms:
+                action = t
+            else:
+                # Find upper confidence bound for all arms
+                ucb = values + self.c * np.sqrt(np.log(t)*np.reciprocal(counts))
+                action = np.argmax(a=ucb)
+            
+            # Now that we have our arm
+            reward = bandit.pull_arm(n=action)
+            total_reward += reward
+            cumulative_rewards[t] = total_reward
+            
+            # Update value for arm
+            values[action] = (counts[action]*values[action] + reward) / (counts[action] + 1)
+            counts[action] += 1
+            
+            # Record history
+            history[t] = values
+            
+        return (history, cumulative_rewards)
