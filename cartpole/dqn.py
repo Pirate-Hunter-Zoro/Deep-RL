@@ -4,12 +4,12 @@ import torch.optim as optim
 import numpy as np
 import random
 from collections import deque
-import math
 
 
 class QNetwork(nn.Module):
     
     def __init__(self, state_dim: int=4, num_actions: int=2):
+        super().__init__()
         self.layers = nn.Sequential(
             nn.Linear(in_features=state_dim, out_features=24),
             nn.ReLU(),
@@ -25,7 +25,7 @@ class QNetwork(nn.Module):
     
 class DQNAgent():
     
-    def __init__(self, gamma: float=0.99, epsilon: float=1.0, epsilon_min: float=0.01, epsilon_decay: float=0.995, batch_size: int=64, lr: float=3e-4):
+    def __init__(self, state_dim: int=4, num_actions: int=2, gamma: float=0.99, epsilon: float=1.0, epsilon_min: float=0.01, epsilon_decay: float=0.995, batch_size: int=64, lr: float=3e-4):
         self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
@@ -35,8 +35,8 @@ class DQNAgent():
         self.loss_fn = nn.MSELoss()
         
         # We need our policy network and target network
-        self.policy_network = QNetwork()
-        self.target_network = QNetwork()
+        self.policy_network = QNetwork(state_dim=state_dim, num_actions=num_actions)
+        self.target_network = QNetwork(state_dim=state_dim, num_actions=num_actions)
         self.optimizer = optim.Adam(params=self.policy_network.parameters(), lr=lr)
     
     def update_target_network(self):
@@ -49,9 +49,9 @@ class DQNAgent():
             return 0 if random.random() < 0.5 else 1
         else:
             # greedy action
-            state = torch.tensor(state)
+            state = torch.from_numpy(state).float().unsqueeze(0) # convert to tensor and add batch dimension
             q_value_logits = self.policy_network(state)
-            return torch.argmax(q_value_logits, dim=-1)
+            return torch.argmax(q_value_logits, dim=-1).item()
         
     def remember(self, state: np.array, action: int, reward: float, next_state: np.array, done: bool):
         self.buffer.append((state, action, reward, next_state, 1 if done else 0))
@@ -60,18 +60,19 @@ class DQNAgent():
         if len(self.buffer) >= self.batch_size:
             batch = random.sample(population=self.buffer, k=self.batch_size)
             states = torch.tensor([t[0] for t in batch])
-            actions = torch.tensor([t[1] for t in batch])
+            actions = torch.tensor([t[1] for t in batch], dtype=torch.long)
             rewards = torch.tensor([t[2] for t in batch])
             next_states = torch.tensor([t[3] for t in batch])
             dones = torch.tensor([t[4] for t in batch])
             
             # Calculate our target values
-            max_future_q = torch.max(self.target_network(next_states), axis=-1)
-            target_q_values = rewards + (self.gamma * max_future_q * (1-dones))
+            max_future_q = torch.max(self.target_network(next_states), axis=-1)[0]
+            target_q_values = (rewards + (self.gamma * max_future_q * (1-dones)))
+            target_q_values = target_q_values.unsqueeze(dim=-1)
             
             # Now pass the current state into the policy network to see our actual q_values
             q_values_all_actions = self.policy_network(states)
-            q_values_taken_actions = torch.gather(input=q_values_all_actions, dim=-1, index=actions)
+            q_values_taken_actions = torch.gather(input=q_values_all_actions, dim=-1, index=actions.unsqueeze(dim=-1))
             
             # Calculate the MSE loss
             loss = self.loss_fn(q_values_taken_actions, target_q_values)
