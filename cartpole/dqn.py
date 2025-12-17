@@ -25,7 +25,7 @@ class QNetwork(nn.Module):
     
 class DQNAgent():
     
-    def __init__(self, state_dim: int=4, num_actions: int=2, gamma: float=0.99, epsilon: float=1.0, epsilon_min: float=0.01, epsilon_decay: float=0.995, batch_size: int=64, lr: float=3e-4):
+    def __init__(self, state_dim: int=4, num_actions: int=2, gamma: float=0.99, epsilon: float=1.0, epsilon_min: float=0.01, epsilon_decay: float=0.995, batch_size: int=64, lr: float=3e-4, double_dqn: bool=False, soft_update: bool=False, tau: float=0.01):
         self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
@@ -33,6 +33,9 @@ class DQNAgent():
         self.batch_size = batch_size
         self.buffer = deque(maxlen=2000)
         self.loss_fn = nn.MSELoss()
+        self.double_dqn = double_dqn
+        self.soft_update = soft_update
+        self.tau = tau
         
         # We need our policy network and target network
         self.policy_network = QNetwork(state_dim=state_dim, num_actions=num_actions)
@@ -40,7 +43,13 @@ class DQNAgent():
         self.optimizer = optim.Adam(params=self.policy_network.parameters(), lr=lr)
     
     def update_target_network(self):
-        self.target_network.load_state_dict(state_dict=self.policy_network.state_dict())
+        if not self.soft_update:
+            # hard update
+            self.target_network.load_state_dict(state_dict=self.policy_network.state_dict())
+        else:
+            # soft update
+            for target_param, policy_param in zip(self.target_network.parameters(), self.policy_network.parameters()):
+                target_param.data.copy_((self.tau * policy_param.data) + ((1-self.tau) * target_param.data))
     
     def act(self, state: np.array) -> int:
         # Given a state, select the next action
@@ -59,14 +68,22 @@ class DQNAgent():
     def replay(self):
         if len(self.buffer) >= self.batch_size:
             batch = random.sample(population=self.buffer, k=self.batch_size)
-            states = torch.tensor([t[0] for t in batch])
-            actions = torch.tensor([t[1] for t in batch], dtype=torch.long)
-            rewards = torch.tensor([t[2] for t in batch])
-            next_states = torch.tensor([t[3] for t in batch])
-            dones = torch.tensor([t[4] for t in batch])
+            states = torch.tensor(np.array([t[0] for t in batch]), dtype=torch.float)
+            actions = torch.tensor(np.array([t[1] for t in batch]), dtype=torch.long)
+            rewards = torch.tensor(np.array([t[2] for t in batch]), dtype=torch.float)
+            next_states = torch.tensor(np.array([t[3] for t in batch]), dtype=torch.float)
+            dones = torch.tensor(np.array([t[4] for t in batch]), dtype=torch.float)
             
             # Calculate our target values
-            max_future_q = torch.max(self.target_network(next_states), axis=-1)[0]
+            if not self.double_dqn:
+                # Target network both picks next actions and evaluates them
+                max_future_q = torch.max(self.target_network(next_states), axis=-1)[0]
+            else:
+                # Policy network picks next actions and target network evaluates them
+                next_actions = torch.argmax(self.policy_network(next_states), axis=-1)
+                target_all_q_values = self.target_network(next_states)
+                max_future_q = torch.gather(input=target_all_q_values, dim=-1, index=next_actions.unsqueeze(dim=-1)).squeeze(1)
+            
             target_q_values = (rewards + (self.gamma * max_future_q * (1-dones)))
             target_q_values = target_q_values.unsqueeze(dim=-1)
             
@@ -81,5 +98,9 @@ class DQNAgent():
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            
+            # If using soft update, update immediately
+            if self.soft_update:
+                self.update_target_network()
             
             self.epsilon = max(self.epsilon_min, self.epsilon*self.epsilon_decay)
