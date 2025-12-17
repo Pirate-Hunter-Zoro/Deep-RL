@@ -6,7 +6,7 @@ from pathlib import Path
 import os
 
 SMOOTHING_WINDOW = 50
-EPOCHS = 1000
+EPOCHS = 3000
 
 def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: float=0.1):
     env = gym.make('Pendulum-v1')

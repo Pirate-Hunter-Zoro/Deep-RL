@@ -20,6 +20,12 @@ class PolicyNetwork(nn.Module):
         # Now we need two different heads for the means and standard deviations of our actions
         self.mean_head = nn.Linear(in_features=128, out_features=action_dim)
         self.log_std_param = nn.Parameter(torch.zeros(1,action_dim)) # Learn log std parameter because that can be negative
+        
+        # Initialize weights to be small
+        with torch.no_grad():
+            self.mean_head.weight.mul_(0.1)
+            self.mean_head.bias.zero_()
+        
     
     def forward(self, state: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
         x = self.layers(state)
@@ -94,25 +100,26 @@ class VPGAgent:
         for i in range(len(self.rewards)-1, -1, -1):
             R = self.rewards[i] + self.gamma * R
             cumulative_rewards.insert(0, R)
-        cumulative_rewards = torch.tensor(cumulative_rewards, dtype=torch.float32) # shape (T,)
-        advantage = cumulative_rewards
+        normalized_rewards = torch.tensor(cumulative_rewards, dtype=torch.float32) # shape (T,)
+        normalized_rewards = (normalized_rewards - torch.mean(normalized_rewards)) / (torch.std(normalized_rewards) + 1e-9)
+        advantage = normalized_rewards
         
         if self.value_net != None:
             # Calculate baseline
             values = torch.stack(self.saved_values).squeeze() # shape (T,)
-            advantage = cumulative_rewards - values.detach() # Policy should treat baseline as fixed number and not mess with the value network's parameters
+            advantage = normalized_rewards - values.detach() # Policy should treat baseline as fixed number and not mess with the value network's parameters
         
         # Calculate policy loss
         log_probs = torch.stack(self.saved_log_probs).squeeze() # shape (T,)
         policy_loss = -torch.mean(log_probs * advantage) # We want to maximize the probability of taking actions with high advantage
         self.policy_optim.zero_grad()
         policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
         self.policy_optim.step()
         
         if self.value_net != None:
             # Calculate value loss
-            value_loss = self.value_loss_fn(values, cumulative_rewards)
+            value_loss = self.value_loss_fn(values, normalized_rewards)
             self.value_optim.zero_grad()
             value_loss.backward()
             self.value_optim.step()
