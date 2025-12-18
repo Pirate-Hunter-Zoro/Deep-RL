@@ -46,7 +46,7 @@ def run_experiment(name: str, double_dqn: bool=False, soft_update: bool=False, t
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
     plt.title("Total Reward by Episode")
-    fig_path = Path(f"results/dqn_cartpole_{name}.png")
+    fig_path = Path(f"results/dqn/dqn_cartpole_{name}.png")
     os.makedirs(fig_path.parent, exist_ok=True)
     plt.savefig(str(fig_path))
     plt.close()

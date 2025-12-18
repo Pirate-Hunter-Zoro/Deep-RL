@@ -11,22 +11,21 @@ class PolicyNetwork(nn.Module):
     def __init__(self, state_dim: int, action_dim: int):
         super().__init__()
         
+        def layer_init(layer: nn.Linear, std: float=np.sqrt(2), bias_const: float=0.0) -> nn.Linear:
+            nn.init.orthogonal_(layer.weight, std)
+            nn.init.constant_(layer.bias, bias_const)
+            return layer
+        
         self.layers = nn.Sequential(
-            nn.Linear(in_features=state_dim, out_features=128),
+            layer_init(nn.Linear(in_features=state_dim, out_features=128)),
             nn.ReLU(),
-            nn.Linear(in_features=128, out_features=128),
+            layer_init(nn.Linear(in_features=128, out_features=128)),
             nn.ReLU()
         )
         # Now we need two different heads for the means and standard deviations of our actions
-        self.mean_head = nn.Linear(in_features=128, out_features=action_dim)
+        self.mean_head = layer_init(nn.Linear(in_features=128, out_features=action_dim), std=0.01)
         self.log_std_param = nn.Parameter(torch.zeros(1,action_dim)) # Learn log std parameter because that can be negative
         
-        # Initialize weights to be small
-        with torch.no_grad():
-            self.mean_head.weight.mul_(0.1)
-            self.mean_head.bias.zero_()
-        
-    
     def forward(self, state: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
         x = self.layers(state)
         # Mean action value
@@ -65,9 +64,14 @@ class VPGAgent:
             self.value_optim = optim.Adam(params=self.value_net.parameters(), lr=lr)
             self.value_loss_fn = nn.MSELoss()
             
-        self.saved_log_probs = [] # Action probabilities over time
-        self.saved_values = [] # Value prediction for states over time
-        self.rewards = [] # Accumulated rewards over time
+        self.saved_log_probs = [] # Action probabilities over an episode
+        self.saved_values = [] # Value prediction for states over an episode
+        self.rewards = [] # Accumulated rewards over an episode
+        
+        # The following three buffers are the same except for MULTIPLE episodes
+        self.batch_log_probs = [] 
+        self.batch_values = []
+        self.batch_rewards = []
         
     def act(self, state: np.array, epsilon: float=0.0) -> int:
         state = torch.tensor(state, dtype=torch.float32)
@@ -82,49 +86,67 @@ class VPGAgent:
         if random.random() < epsilon:
             # Random uniformly sampled action
             action = torch.distributions.Uniform(low=-2.0,high=2.0).sample()
+            # Don't let this affect the policy gradient
+            self.saved_log_probs.append(torch.zeros(size=dist.log_prob(action).shape, device=action_mean.device))
         else:
             # Sample an action according to the distribution
             action = dist.sample()
-            
-        # Find the action's probability with respect to our policy - even if we took a completely uniformly random action, the probability of that action according to our policy still needs to be stored
-        self.saved_log_probs.append(dist.log_prob(action))
+            # Find the action's probability with respect to our policy
+            self.saved_log_probs.append(dist.log_prob(action))
             
         # Return the action
         action = torch.clamp(action, -2.0, 2.0)
         return action.item()
     
-    def update(self):
+    def finish_episode(self):
         # Obtain cumulative rewards from the episode
         R = 0
         cumulative_rewards = []
         for i in range(len(self.rewards)-1, -1, -1):
             R = self.rewards[i] + self.gamma * R
             cumulative_rewards.insert(0, R)
-        normalized_rewards = torch.tensor(cumulative_rewards, dtype=torch.float32) # shape (T,)
-        normalized_rewards = (normalized_rewards - torch.mean(normalized_rewards)) / (torch.std(normalized_rewards) + 1e-9)
-        advantage = normalized_rewards
-        
-        if self.value_net != None:
-            # Calculate baseline
-            values = torch.stack(self.saved_values).squeeze() # shape (T,)
-            advantage = normalized_rewards - values.detach() # Policy should treat baseline as fixed number and not mess with the value network's parameters
-        
-        # Calculate policy loss
-        log_probs = torch.stack(self.saved_log_probs).squeeze() # shape (T,)
-        policy_loss = -torch.mean(log_probs * advantage) # We want to maximize the probability of taking actions with high advantage
-        self.policy_optim.zero_grad()
-        policy_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
-        self.policy_optim.step()
-        
-        if self.value_net != None:
-            # Calculate value loss
-            value_loss = self.value_loss_fn(values, normalized_rewards)
-            self.value_optim.zero_grad()
-            value_loss.backward()
-            self.value_optim.step()
+        cumulative_rewards = torch.tensor(cumulative_rewards, dtype=torch.float32) # shape (T,)
+            
+        # Add to batch memory
+        self.batch_log_probs.extend(self.saved_log_probs)
+        self.batch_values.extend(self.saved_values)
+        self.batch_rewards.extend(cumulative_rewards)
             
         # Clear memory for next episode
         self.saved_log_probs = [] 
         self.saved_values = [] 
         self.rewards = [] 
+        
+    def train(self):
+        if len(self.batch_log_probs) > 0:
+            # Calculate policy loss
+            batch_log_probs = torch.stack(self.batch_log_probs).squeeze() # shape (B,)
+            batch_returns = torch.stack(self.batch_rewards).squeeze()
+            advantage = batch_returns
+            
+            if self.value_net != None:
+                # We are using the advantage calculation
+                batch_values = torch.stack(self.batch_values).squeeze() 
+                # Calculate advantage WITHOUT affecting the value function's gradient
+                advantage = batch_returns - batch_values.detach()
+                
+            # Normalize advantage over all our different trajectories in our batch
+            norm_advantage = (advantage - torch.mean(advantage)) / (torch.std(advantage) + 1e-9)
+            
+            # We want to maximize the probability of taking actions with high advantage
+            policy_loss = -torch.mean(batch_log_probs * norm_advantage)
+            self.policy_optim.zero_grad()
+            policy_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
+            self.policy_optim.step()
+            
+            if self.value_net != None:
+                # Calculate value loss
+                value_loss = self.value_loss_fn(batch_values, batch_returns)
+                self.value_optim.zero_grad()
+                value_loss.backward()
+                self.value_optim.step()
+            
+            self.batch_log_probs = []
+            self.batch_rewards = []
+            self.batch_values = []

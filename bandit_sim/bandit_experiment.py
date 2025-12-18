@@ -30,7 +30,7 @@ def run_experiments():
             
             results[agent_label] = (history, regret)
             
-        results_path = Path(f"results/{arm_count}_arms")
+        results_path = Path(f"results/multi_arm_bandit/{arm_count}_arms")
         os.makedirs(results_path, exist_ok=True)
             
         # Plot regret

@@ -7,6 +7,7 @@ import os
 
 SMOOTHING_WINDOW = 50
 EPOCHS = 3000
+BATCH_SIZE = 10
 
 def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: float=0.1):
     env = gym.make('Pendulum-v1')
@@ -27,8 +28,13 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
                 obs = next_state
                 done = terminated or truncated
                 total_reward += reward
+                
             # Update after an episode
-            agent.update()
+            agent.finish_episode()
+            # If batch is full, perform a training step
+            if ((e+1) % BATCH_SIZE == 0):
+                agent.train()
+            
             episode_rewards[e] = total_reward
             if ((e+1) % (int(EPOCHS/5))) == 0:
                 print(f"Experiment {experiment_name}, Episode {e+1}/{EPOCHS}, Total Reward: {total_reward}")
@@ -41,7 +47,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
         plt.xlabel("Episode")
         plt.ylabel("Total Reward")
         plt.title("Total Reward by Episode")
-        fig_path = Path(f"results/{experiment_name}/pendulum_run_{i}_{experiment_name}.png")
+        fig_path = Path(f"results/vpg/{experiment_name}/pendulum_run_{i}_{experiment_name}.png")
         os.makedirs(fig_path.parent, exist_ok=True)
         plt.savefig(str(fig_path))
         plt.close()

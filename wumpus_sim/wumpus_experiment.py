@@ -106,7 +106,7 @@ def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
     plt.ylabel("Smoothed Reward")
     plt.title("Smoothed Reward by Episode")
     plt.legend()
-    fig_path = Path(f"results/wumpus_experiment_{experiment_name}.png")
+    fig_path = Path(f"results/tabular_rl/wumpus_experiment_{experiment_name}.png")
     os.makedirs(fig_path.parent, exist_ok=True)
     plt.savefig(str(fig_path))
     plt.close()
