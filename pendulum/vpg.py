@@ -29,7 +29,8 @@ class PolicyNetwork(nn.Module):
     def forward(self, state: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
         x = self.layers(state)
         # Mean action value
-        action_mean = self.mean_head(x)
+        action_mean = torch.tanh(self.mean_head(x)) * 2.0 # Scale to action range of [-2,2]
+        # Standard deviation of action value
         action_std = self.log_std_param.exp()
         return action_mean, action_std
     
@@ -119,7 +120,7 @@ class VPGAgent:
         
     def train(self):
         if len(self.batch_log_probs) > 0:
-            # Calculate policy loss
+             # Calculate policy loss
             batch_log_probs = torch.stack(self.batch_log_probs).squeeze() # shape (B,)
             batch_returns = torch.stack(self.batch_rewards).squeeze()
             advantage = batch_returns
@@ -129,23 +130,24 @@ class VPGAgent:
                 batch_values = torch.stack(self.batch_values).squeeze() 
                 # Calculate advantage WITHOUT affecting the value function's gradient
                 advantage = batch_returns - batch_values.detach()
-                
-            # Normalize advantage over all our different trajectories in our batch
-            norm_advantage = (advantage - torch.mean(advantage)) / (torch.std(advantage) + 1e-9)
-            
-            # We want to maximize the probability of taking actions with high advantage
-            policy_loss = -torch.mean(batch_log_probs * norm_advantage)
-            self.policy_optim.zero_grad()
-            policy_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
-            self.policy_optim.step()
-            
-            if self.value_net != None:
                 # Calculate value loss
                 value_loss = self.value_loss_fn(batch_values, batch_returns)
                 self.value_optim.zero_grad()
                 value_loss.backward()
                 self.value_optim.step()
+                
+            # Normalize advantage over all our different trajectories in our batch
+            norm_advantage = (advantage - torch.mean(advantage)) / (torch.std(advantage) + 1e-9)
+            
+            # Find entropy of policy network
+            entropy = torch.sum(self.policy_net.log_std_param + 0.5 + 0.5*np.log(2*torch.pi))
+            
+            # We want to maximize the probability of taking actions with high advantage
+            policy_loss = -torch.mean(batch_log_probs * norm_advantage) - 0.01*entropy
+            self.policy_optim.zero_grad()
+            policy_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
+            self.policy_optim.step()
             
             self.batch_log_probs = []
             self.batch_rewards = []
