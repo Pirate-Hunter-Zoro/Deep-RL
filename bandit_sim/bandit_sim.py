@@ -40,7 +40,7 @@ class Bandit_Sim:
         self.clip = clip
         bound = clip * payout_std
         if bound >= 1:
-            print("Variance too high for Thompson Sampling.")
+            print("Variance too high for Thompson Sampling.", flush=True)
         self.arm_means = [(1 - 2 * bound) * (i)/(self.n_arms - 1) + bound for i in range(self.n_arms)]
     def pull_arm(self, n):
         """A method which returns a payout from arm `n`

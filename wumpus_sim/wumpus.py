@@ -141,12 +141,10 @@ class WumpusMDP(FiniteStateMDP):
     def is_terminal(self, state):
         ## if we're at the wumpus and have no immunity, we die
         if self.obs_at('wumpus', state.pos) and not state.has_immunity:
-            # print("DEBUG: Dead at position {}".format(state.pos))
             return True
 
         ## if we're at the goal, we win
         if self.obs_at('goal', state.pos):
-            # print("DEBUG: Reached goal at position {}".format(state.pos))
             return True
 
         return False

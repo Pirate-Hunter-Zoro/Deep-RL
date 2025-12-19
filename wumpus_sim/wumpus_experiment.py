@@ -69,7 +69,7 @@ def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
             state = next_state
             steps += 1
         q_learning_rewards[i] = total_reward
-        if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}")
+        if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}", flush=True)
     
     # SARSA loop
     sarsa_rewards = np.zeros(shape=(EPISODES,), dtype=np.float32)
@@ -91,7 +91,7 @@ def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
             action = next_action
             steps += 1
         sarsa_rewards[i] = total_reward
-        if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}")
+        if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}", flush=True)
         
     # Smooth rewards
     weights = 1/SMOOTHING_WINDOW * np.ones(shape=(SMOOTHING_WINDOW,), dtype=np.float32)

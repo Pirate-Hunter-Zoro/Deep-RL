@@ -13,7 +13,7 @@ from pathlib import Path
 import os
 
 SMOOTHING_WINDOW = 500
-EPOCHS = 3000
+EPOCHS = 5000
 BATCH_SIZE = 10
 
 def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: float=0.1):
@@ -32,14 +32,12 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
         for e in range(EPOCHS):
             obs, _ = env.reset()
             done = False
-            total_reward = 0
             while not done:
                 action = agent.act(state=obs, epsilon=epsilon)
                 next_state, reward, terminated, truncated, info = env.step([action]) # Because pendulum wants a list; not float
-                agent.rewards.append(reward)
+                agent.rewards.append(reward) # necessary for VPG
                 obs = next_state
                 done = terminated or truncated
-                total_reward += reward
                 
             # Update after an episode
             agent.finish_episode(last_state=next_state, truncated=truncated)
@@ -47,9 +45,10 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
             if ((e+1) % BATCH_SIZE == 0):
                 agent.train()
             
-            episode_rewards[e] = total_reward
+            # Save the raw reward for plotting later
+            episode_rewards[e] = info['episode']['r']
             if ((e+1) % (int(EPOCHS/5))) == 0:
-                print(f"Experiment {experiment_name}, Episode {e+1}/{EPOCHS}, Total Reward: {info['episode']['r']}, Length: {info['episode']['l']}")
+                print(f"Experiment {experiment_name}, Episode {e+1}/{EPOCHS}, Total Reward: {info['episode']['r']}, Length: {info['episode']['l']}", flush=True)
                 
         # Plot smoothed episode rewards
         weights = 1/SMOOTHING_WINDOW * np.ones(shape=(SMOOTHING_WINDOW,), dtype=np.float32)

@@ -36,7 +36,7 @@ def run_experiment(name: str, double_dqn: bool=False, soft_update: bool=False, t
         # Record reward
         episode_rewards.append(total_reward)
         if ((e+1) % (int(EPOCHS/5))) == 0:
-            print(f"Experiment {name}, Episode {e+1}/{EPOCHS}, Total Reward: {total_reward}")
+            print(f"Experiment {name}, Episode {e+1}/{EPOCHS}, Total Reward: {total_reward}", flush=True)
     
     # Plot smoothed episode rewards
     weights = 1/SMOOTHING_WINDOW * np.ones(shape=(SMOOTHING_WINDOW,), dtype=np.float32)
