@@ -1,6 +1,12 @@
 from pendulum.vpg import VPGAgent
 import gymnasium as gym
-from gymnasium.wrappers import NormalizeObservation, NormalizeReward, TransformObservation, TransformReward
+from gymnasium.wrappers import (
+    NormalizeObservation, 
+    NormalizeReward, 
+    TransformObservation, 
+    TransformReward,
+    RecordEpisodeStatistics
+)
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
@@ -12,6 +18,7 @@ BATCH_SIZE = 10
 
 def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: float=0.1):
     env = gym.make('Pendulum-v1')
+    env = RecordEpisodeStatistics(env)
     env = NormalizeObservation(env)
     env = TransformObservation(env, lambda obs: np.clip(obs, -10, 10), env.observation_space) # clamps each normalized observation
     env = NormalizeReward(env)
@@ -28,7 +35,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
             total_reward = 0
             while not done:
                 action = agent.act(state=obs, epsilon=epsilon)
-                next_state, reward, terminated, truncated, _ = env.step([action]) # Because pendulum wants a list; not float
+                next_state, reward, terminated, truncated, info = env.step([action]) # Because pendulum wants a list; not float
                 agent.rewards.append(reward)
                 obs = next_state
                 done = terminated or truncated
@@ -42,7 +49,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
             
             episode_rewards[e] = total_reward
             if ((e+1) % (int(EPOCHS/5))) == 0:
-                print(f"Experiment {experiment_name}, Episode {e+1}/{EPOCHS}, Total Reward: {total_reward}")
+                print(f"Experiment {experiment_name}, Episode {e+1}/{EPOCHS}, Total Reward: {info['episode']['r']}, Length: {info['episode']['l']}")
                 
         # Plot smoothed episode rewards
         weights = 1/SMOOTHING_WINDOW * np.ones(shape=(SMOOTHING_WINDOW,), dtype=np.float32)

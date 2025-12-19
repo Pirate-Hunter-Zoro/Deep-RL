@@ -146,7 +146,7 @@ class VPGAgent:
             policy_loss = -torch.mean(batch_log_probs * norm_advantage) - 0.01*entropy
             self.policy_optim.zero_grad()
             policy_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 0.5)
             self.policy_optim.step()
             
             self.batch_log_probs = []
