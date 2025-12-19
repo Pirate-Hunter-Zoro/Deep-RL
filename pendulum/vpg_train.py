@@ -1,5 +1,6 @@
 from pendulum.vpg import VPGAgent
 import gymnasium as gym
+from gymnasium.wrappers import NormalizeObservation, NormalizeReward, TransformObservation, TransformReward
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
@@ -11,6 +12,10 @@ BATCH_SIZE = 10
 
 def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: float=0.1):
     env = gym.make('Pendulum-v1')
+    env = NormalizeObservation(env)
+    env = TransformObservation(env, lambda obs: np.clip(obs, -10, 10), env.observation_space) # clamps each normalized observation
+    env = NormalizeReward(env)
+    env = TransformReward(env, lambda r: np.clip(r, -10, 10)) # clamps each normalized reward
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     
@@ -24,7 +29,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
             while not done:
                 action = agent.act(state=obs, epsilon=epsilon)
                 next_state, reward, terminated, truncated, _ = env.step([action]) # Because pendulum wants a list; not float
-                agent.rewards.append(reward / 100.0)
+                agent.rewards.append(reward)
                 obs = next_state
                 done = terminated or truncated
                 total_reward += reward
