@@ -12,7 +12,7 @@ import numpy as np
 from pathlib import Path
 import os
 
-SMOOTHING_WINDOW = 50
+SMOOTHING_WINDOW = 500
 EPOCHS = 3000
 BATCH_SIZE = 10
 
@@ -27,7 +27,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
     action_dim = env.action_space.shape[0]
     
     for i in range(num_runs):
-        agent = VPGAgent(state_dim=state_dim, action_dim=action_dim, use_baseline=use_baseline, lr=3e-4)
+        agent = VPGAgent(state_dim=state_dim, action_dim=action_dim, use_baseline=use_baseline)
         episode_rewards = np.zeros(shape=(EPOCHS,)) # for plotting
         for e in range(EPOCHS):
             obs, _ = env.reset()
@@ -42,7 +42,7 @@ def train_vpg(experiment_name: str, use_baseline: bool, num_runs: int, epsilon: 
                 total_reward += reward
                 
             # Update after an episode
-            agent.finish_episode()
+            agent.finish_episode(last_state=next_state, truncated=truncated)
             # If batch is full, perform a training step
             if ((e+1) % BATCH_SIZE == 0):
                 agent.train()
