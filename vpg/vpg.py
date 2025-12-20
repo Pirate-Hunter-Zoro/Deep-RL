@@ -8,7 +8,7 @@ from typing import Tuple
 
 class PolicyNetwork(nn.Module):
     
-    def __init__(self, state_dim: int, action_dim: int):
+    def __init__(self, state_dim: int, action_dim: int, is_continuous: bool=True):
         super().__init__()
         
         def layer_init(layer: nn.Linear, std: float=np.sqrt(2), bias_const: float=0.0) -> nn.Linear:
@@ -22,9 +22,14 @@ class PolicyNetwork(nn.Module):
             layer_init(nn.Linear(in_features=256, out_features=256)),
             nn.ReLU()
         )
-        # Now we need two different heads for the means and standard deviations of our actions
-        self.mean_head = layer_init(nn.Linear(in_features=256, out_features=action_dim), std=0.01)
-        self.log_std_param = nn.Parameter(torch.zeros(1,action_dim)) # Learn log std parameter because that can be negative
+        
+        self.is_continuous = is_continuous
+        if self.is_continuous:
+            # Now we need two different heads for the means and standard deviations of our actions
+            self.mean_head = layer_init(nn.Linear(in_features=256, out_features=action_dim), std=0.01)
+            self.log_std_param = nn.Parameter(torch.zeros(1,action_dim)) # Learn log std parameter because that can be negative
+        else:
+            pass
         
     def forward(self, state: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
         x = self.layers(state)
