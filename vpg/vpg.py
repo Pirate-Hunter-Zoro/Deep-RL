@@ -29,15 +29,20 @@ class PolicyNetwork(nn.Module):
             self.mean_head = layer_init(nn.Linear(in_features=256, out_features=action_dim), std=0.01)
             self.log_std_param = nn.Parameter(torch.zeros(1,action_dim)) # Learn log std parameter because that can be negative
         else:
-            pass
+            self.action_head = nn.Linear(in_features=256, out_features=action_dim)
         
     def forward(self, state: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
         x = self.layers(state)
-        # Mean action value
-        action_mean = self.mean_head(x)
-        # Standard deviation of action value
-        action_std = self.log_std_param.exp()
-        return action_mean, action_std
+        if self.is_continuous:
+            # Mean action value
+            action_mean = self.mean_head(x)
+            # Standard deviation of action value
+            action_std = self.log_std_param.exp()
+            return action_mean, action_std
+        else:
+            # Return raw logits of the actions
+            action_logits = self.action_head(x)
+            return action_logits, None
     
 
 class ValueNetwork(nn.Module):
@@ -57,8 +62,9 @@ class ValueNetwork(nn.Module):
     
 class VPGAgent:
     
-    def __init__(self, state_dim: int, action_dim: int, lr: float=5e-4, gamma: float=0.99, use_baseline: bool=False):
-        self.policy_net = PolicyNetwork(state_dim=state_dim, action_dim=action_dim)
+    def __init__(self, state_dim: int, action_dim: int, lr: float=5e-4, gamma: float=0.99, use_baseline: bool=False, is_continuous: bool=True):
+        self.is_continuous = is_continuous
+        self.policy_net = PolicyNetwork(state_dim=state_dim, action_dim=action_dim, is_continuous=is_continuous)
         self.policy_optim = optim.Adam(params=self.policy_net.parameters(), lr=lr)
         self.action_dim = action_dim
         self.gamma = gamma
@@ -82,27 +88,48 @@ class VPGAgent:
         
     def act(self, state: np.array, epsilon: float=0.0) -> int:
         state = torch.tensor(state, dtype=torch.float32)
-        action_mean, action_std = self.policy_net(state)
-        # Create a probability distribution out of the action probabilities and sample from it
-        dist = torch.distributions.Normal(action_mean, action_std)
+        
         if self.use_baseline:
             # Use baseline
             estimated_value = self.value_net(state)
             self.saved_values.append(estimated_value)
         
-        if random.random() < epsilon:
-            # Random uniformly sampled action
-            action = torch.distributions.Uniform(low=-2.0,high=2.0).sample()
-            # Don't let this affect the policy gradient
-            self.saved_log_probs.append(torch.zeros(size=dist.log_prob(action).shape, device=action_mean.device))
+        if self.is_continuous:
+            action_mean, action_std = self.policy_net(state)
+            # Create a probability distribution out of the action probabilities and sample from it
+            dist = torch.distributions.Normal(action_mean, action_std)
+            
+            if random.random() < epsilon:
+                # Random uniformly sampled action
+                action = torch.distributions.Uniform(low=-2.0,high=2.0).sample()
+                # Don't let this affect the policy gradient
+                self.saved_log_probs.append(torch.zeros(size=dist.log_prob(action).shape, device=action_mean.device))
+            else:
+                # Sample an action according to the distribution
+                raw_action = dist.sample()
+                compressed_action = torch.tanh(input=raw_action)
+                # Find the action's probability with respect to our policy
+                self.saved_log_probs.append(dist.log_prob(raw_action) - torch.log(1-compressed_action**2))
+                # Scale to -2,2
+                action = 2.0 * compressed_action
         else:
-            # Sample an action according to the distribution
-            raw_action = dist.sample()
-            compressed_action = torch.tanh(input=raw_action)
-            # Find the action's probability with respect to our policy
-            self.saved_log_probs.append(dist.log_prob(raw_action) - torch.log(1-compressed_action**2))
-            # Scale to -2,2
-            action = 2.0 * compressed_action
+            # Discrete actions
+            action_logits, _ = self.policy_net(state)
+            # Create distribution out of actions
+            dist = torch.distributions.Categorical(logits=action_logits)
+            # Sample discrete action according to the categorial distribution of action probabilities
+            action = dist.sample()
+            # Find the probability of this action
+            action_prob = dist.log_prob(action)
+            
+            if random.random() < epsilon:
+                # Random action
+                action = torch.tensor(int(random.random() * self.action_dim))
+                # Don't let this affect the policy gradient
+                self.saved_log_probs.append(torch.zeros(size=action_prob.shape, device=action_logits.device))
+            else:
+                # DO save this action probability
+                self.saved_log_probs.append(action_prob)
             
         # Return the action
         return action.item()
@@ -148,7 +175,10 @@ class VPGAgent:
             norm_advantage = (advantage - torch.mean(advantage)) / (torch.std(advantage) + 1e-9)
             
             # Find entropy of policy network
-            entropy = torch.sum(self.policy_net.log_std_param + 0.5 + 0.5*np.log(2*torch.pi))
+            if self.is_continuous:
+                entropy = torch.sum(self.policy_net.log_std_param + 0.5 + 0.5*np.log(2*torch.pi))
+            else:
+                entropy = 0
             
             # We want to maximize the probability of taking actions with high advantage
             policy_loss = -torch.mean(batch_log_probs * norm_advantage) - 0.01*entropy
