@@ -1,4 +1,4 @@
-from pendulum.vpg import VPGAgent
+from vpg.vpg import VPGAgent
 import gymnasium as gym
 from gymnasium.wrappers import (
     NormalizeObservation, 

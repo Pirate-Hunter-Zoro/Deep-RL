@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from enum import Enum
-from wumpus_sim.mdp import FiniteStateMDP, MDPState
+from mdp.mdp import FiniteStateMDP, MDPState
 import itertools
 import numpy as np
 

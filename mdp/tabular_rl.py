@@ -1,5 +1,5 @@
 import random
-from wumpus_sim.mdp import MDP, MDPState
+from mdp.mdp import MDP, MDPState
 
 class QLearningAgent:
     
@@ -22,7 +22,7 @@ class QLearningAgent:
         """
         return self.q_table.get((state.i, action), 0.0)
     
-    def choose_action(self, state: MDPState) -> int:
+    def choose_action(self, state: MDPState, use_epsilon: bool=True) -> int:
         """Method to choose an action at the given state
 
         Args:
@@ -32,7 +32,7 @@ class QLearningAgent:
             int: Resulting action
         """
         legal_actions = self.mdp.actions_at(state=state)
-        if random.random() < self.epsilon:
+        if random.random() < self.epsilon and use_epsilon:
             # Random action
             return legal_actions[int(random.random()*len(legal_actions))]
         else:

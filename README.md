@@ -9,9 +9,9 @@ The project is organized into four main modules, each targeting a specific class
 ```text
 .
 ├── bandit_sim/           # Multi-Armed Bandit implementations (Epsilon Greedy, UCB, Thompson)
-├── wumpus_sim/           # Tabular RL (Q-Learning, SARSA) in a Wumpus World environment
-├── cartpole/             # Deep Q-Networks (DQN, Double DQN) for CartPole-v1
-├── pendulum/             # Vanilla Policy Gradient (VPG) for Pendulum-v1
+├── mdp/           # Tabular RL (Q-Learning, SARSA) in a Wumpus World environment
+├── dqn/             # Deep Q-Networks (DQN, Double DQN) for CartPole-v1
+├── vpg/             # Vanilla Policy Gradient (VPG) for Pendulum-v1
 ├── results/              # Generated plots and performance metrics
 └── requirements.txt      # Python dependencies
 
@@ -47,7 +47,7 @@ python -m bandit_sim.bandit_experiment
 Evaluates **Q-Learning** and **SARSA** agents in three custom Wumpus World layouts (Book World, Corner World, Middle World).
 
 ```bash
-python -m wumpus_sim.wumpus_experiment
+python -m mdp.mdp_experiment
 
 ```
 
@@ -60,7 +60,7 @@ Trains a **DQN** agent on `CartPole-v1`. Includes implementations for:
 * Soft Target Updates
 
 ```bash
-python -m cartpole.cartpole_train
+python -m dqn.dqn_train
 
 ```
 
@@ -73,7 +73,7 @@ Trains a **Continuous VPG** agent on `Pendulum-v1` using a squashed Gaussian pol
 * VPG with varying Epsilon (masked exploration)
 
 ```bash
-python -m pendulum.vpg_train
+python -m vpg.vpg_train
 
 ```
 

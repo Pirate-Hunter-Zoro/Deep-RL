@@ -1,5 +1,5 @@
-from wumpus_sim.wumpus import WumpusMDP
-from wumpus_sim.tabular_rl import QLearningAgent, SARSAAgent
+from mdp.wumpus import WumpusMDP, WumpusState, Actions
+from mdp.tabular_rl import QLearningAgent, SARSAAgent
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -12,7 +12,23 @@ END_EPSILON = 0.05
 DECAY_DURATION = int(EPISODES * 0.8) # decay over 80 percent of episodes
 MAX_STEPS = 1000 # hard limit on steps per episode before we truncate
 
-# NOTE - I had Gemini make the following functions to create the three wumpus worlds, but all other code came from my fingertips
+# NOTE - I had Gemini make the following functions and constants to create the three wumpus worlds, but all other code came from my fingertips
+
+ACTION_COLORS = {
+    Actions.UP: 'red',
+    Actions.DOWN: 'blue',
+    Actions.LEFT: 'green',
+    Actions.RIGHT: 'magenta',
+    Actions.PICK_UP: 'black'
+}
+
+ACTION_DELTAS = {
+    Actions.UP: (0, 0.3),
+    Actions.DOWN: (0, -0.3),
+    Actions.LEFT: (-0.3, 0),
+    Actions.RIGHT: (0.3, 0),
+    Actions.PICK_UP: (0, 0)
+}
 
 def get_book_world():
     """
@@ -46,6 +62,47 @@ def get_middle_world():
     mdp.add_obstacle('goal', [5, 5])
     return "Middle_World_10x10", mdp
 
+#########################################################################################################
+# NOTE - all other code came from my fingertips!
+
+def plot_policy(mdp: WumpusMDP, agent: QLearningAgent, experiment_name: str, algorithm_name: str):
+    # Helper function to plot the policy learned by the agent in the given environment
+    _, ax = plt.subplots(figsize=(mdp.width, mdp.height))
+    ax.set_xlim(0,mdp.width)
+    ax.set_ylim(0,mdp.height)
+    ax.grid(True) # so we can see the cells
+    ax.set_xticks(ticks=np.arange(0,mdp.width,step=1))
+    ax.set_yticks(ticks=np.arange(0,mdp.height,step=1))
+    
+    # Plot obstacles
+    for x in range(mdp.width):
+        for y in range(mdp.height):
+            # Mark obstacles/objects with first character of their type name
+            if mdp.obs_at(kind='pit', pos=(x,y)):
+                ax.text(x+0.5, y+0.5, 'P', ha='center', va='center')
+            if mdp.obs_at(kind='wumpus', pos=(x,y)):
+                ax.text(x+0.5, y+0.5, 'W', ha='center', va='center')
+            if mdp.obs_at(kind='goal', pos=(x,y)):
+                ax.text(x+0.5, y+0.5, 'G', ha='center', va='center')
+            if mdp.obj_at(kind='gold', pos=(x,y)):
+                ax.text(x+0.5, y+0.5, '$', ha='center', va='center')
+                
+            # Mark with arrow representing best action according to policy of agent
+            state = WumpusState(x=x, y=y, has_gold=False, has_immunity=False, width=mdp.width, height=mdp.height)
+            best_action = agent.choose_action(state=state, use_epsilon=False)
+            action_color = ACTION_COLORS[best_action]
+            dx, dy = ACTION_DELTAS[best_action]
+            if best_action == Actions.PICK_UP:
+                ax.text(x+0.5, y+0.5, 'PU', ha='center', va='center')
+            else:
+                ax.arrow(x=x+0.5-(dx/2), y=y+0.5-(dy/2), dx=dx, dy=dy, head_width=0.1, fc=action_color, ec=action_color)
+                
+    plt.title("Policy in Environment")
+    fig_path = Path(f"results/tabular_rl/wumpus_policy_{experiment_name}_{algorithm_name}.png")
+    os.makedirs(fig_path.parent, exist_ok=True)
+    plt.savefig(str(fig_path))
+    plt.close()
+
 def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
     # Calculate epsilon decay
     epsilon_decay_step = (START_EPSILON - END_EPSILON) / DECAY_DURATION
@@ -71,6 +128,9 @@ def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
         q_learning_rewards[i] = total_reward
         if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}", flush=True)
     
+    # Plot Q-learning agent's policy
+    plot_policy(mdp=mdp, agent=agent, experiment_name=experiment_name, algorithm_name='q_learning')
+    
     # SARSA loop
     sarsa_rewards = np.zeros(shape=(EPISODES,), dtype=np.float32)
     agent = SARSAAgent(mdp=mdp, discount_factor=0.99, epsilon=START_EPSILON)
@@ -92,6 +152,9 @@ def run_experiment_on_world(mdp: WumpusMDP, experiment_name: str):
             steps += 1
         sarsa_rewards[i] = total_reward
         if i % 500 == 0: print(f"Episode {i}: Reward {total_reward:.1f}, Epsilon {agent.epsilon:.3f}", flush=True)
+        
+    # Plot the sarsa policy
+    plot_policy(mdp=mdp, agent=agent, experiment_name=experiment_name, algorithm_name='sarsa')
         
     # Smooth rewards
     weights = 1/SMOOTHING_WINDOW * np.ones(shape=(SMOOTHING_WINDOW,), dtype=np.float32)
